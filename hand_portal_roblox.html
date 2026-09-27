@@ -47,6 +47,27 @@
       #status {
         opacity: 0.75;
       }
+      #lang {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        display: flex;
+        border-radius: 8px;
+        overflow: hidden;
+        border-bottom: 4px solid #083d63;
+      }
+      #lang button {
+        padding: 6px 12px;
+        border: 0;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      #lang button[aria-pressed="true"] {
+        background: #0d69ac;
+      }
       #status.error {
         color: #ff6b6b;
         opacity: 1;
@@ -56,7 +77,11 @@
   <body>
     <video id="video" playsinline muted></video>
     <canvas id="out"></canvas>
-    <div id="hud"><span id="filter"></span><span id="status">Loading model and camera…</span></div>
+    <div id="hud"><span id="filter"></span><span id="status"></span></div>
+    <div id="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+    </div>
     <script type="module">
       import { FaceLandmarker, FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs";
 
@@ -315,6 +340,92 @@
       const filterLabel = document.getElementById("filter");
       const statusLabel = document.getElementById("status");
 
+      // --- language ---
+      const TEXT = {
+        en: {
+          title: "Roblox Hand Portal",
+          loading: "Loading model and camera…",
+          ready: "Frame a window with both hands · pinch all five fingertips or press ←/→ to switch filters",
+          faceFailed: "face tracking failed to load, Roblox Avatar is off",
+          error: "Error",
+          NotFoundError:
+            "No camera found. Check that a webcam is connected and that the browser is allowed to use it in your system privacy settings (macOS/Windows).",
+          NotAllowedError:
+            "Camera access was blocked. Allow the camera for this site (icon left of the address bar) and for the browser in system privacy settings.",
+          NotReadableError: "The camera is busy in another app (Zoom, Meet, OBS…) or blocked by the system.",
+        },
+        ru: {
+          title: "Roblox-портал из ладоней",
+          loading: "Загружаю модель и камеру…",
+          ready: "Сложите рамку обеими руками · сведите кончики всех пяти пальцев или нажмите ←/→, чтобы сменить фильтр",
+          faceFailed: "не удалось загрузить отслеживание лица, фильтр Roblox Avatar отключён",
+          error: "Ошибка",
+          NotFoundError:
+            "Камера не найдена. Проверьте, что веб-камера подключена и браузеру разрешён доступ к ней в системных настройках конфиденциальности (macOS/Windows).",
+          NotAllowedError:
+            "Доступ к камере запрещён. Разрешите камеру для этого сайта (значок слева от адресной строки) и для браузера в системных настройках конфиденциальности.",
+          NotReadableError: "Камера занята другим приложением (Zoom, Meet, OBS…) или заблокирована системой.",
+        },
+      };
+
+      // Same key as the landing page, so the choice carries over between pages.
+      const savedLang = () => {
+        try {
+          return localStorage.getItem("lang");
+        } catch {
+          return null;
+        }
+      };
+      const saveLang = (value) => {
+        try {
+          localStorage.setItem("lang", value);
+        } catch {}
+      };
+
+      // ?lang= in the link wins, then the visitor's saved choice, then the browser language.
+      const requestedLang = new URLSearchParams(location.search).get("lang");
+      let lang = TEXT[requestedLang]
+        ? requestedLang
+        : TEXT[savedLang()]
+          ? savedLang()
+          : navigator.language?.toLowerCase().startsWith("ru")
+            ? "ru"
+            : "en";
+      const t = (key) => TEXT[lang][key];
+
+      // The status line is kept as data so it can be re-rendered when the language changes.
+      let status = { keys: ["loading"] };
+      const renderStatus = () => {
+        if (status.error) {
+          const { error } = status;
+          const message = TEXT[lang][error.name] ? `${t(error.name)} (${error.name})` : (error.message ?? String(error));
+          statusLabel.textContent = `${t("error")}: ${message}`;
+        } else {
+          statusLabel.textContent = status.keys.map(t).join(" · ");
+        }
+        statusLabel.classList.toggle("error", Boolean(status.error));
+      };
+      const setStatus = (next) => {
+        status = next;
+        renderStatus();
+      };
+
+      function setLang(next) {
+        lang = next;
+        document.documentElement.lang = lang;
+        document.title = t("title");
+        document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lang === lang));
+        renderStatus();
+      }
+
+      document.querySelectorAll("[data-lang]").forEach((b) =>
+        b.addEventListener("click", () => {
+          saveLang(b.dataset.lang);
+          setLang(b.dataset.lang);
+        }),
+      );
+      setLang(lang);
+
       let filterIndex = 0;
       const setFilter = (i) => {
         filterIndex = (i + FILTERS.length) % FILTERS.length;
@@ -493,25 +604,13 @@
         ctx.restore();
       }
 
-      // Browsers report camera failures with terse DOMException texts (Firefox: "The object can not be found here.").
-      const CAMERA_ERRORS = {
-        NotFoundError:
-          "No camera found. Check that a webcam is connected and that the browser is allowed to use it in your system privacy settings (macOS/Windows).",
-        NotAllowedError:
-          "Camera access was blocked. Allow the camera for this site (icon left of the address bar) and for the browser in system privacy settings.",
-        NotReadableError: "The camera is busy in another app (Zoom, Meet, OBS…) or blocked by the system.",
-      };
-
       async function openCamera() {
-        try {
-          video.srcObject = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-        } catch (error) {
-          const hint = CAMERA_ERRORS[error.name];
-          throw hint ? new Error(`${hint} (${error.name})`, { cause: error }) : error;
-        }
+        // Browsers report camera failures with terse DOMException texts (Firefox: "The object can not be found here."),
+        // so renderStatus swaps in a translated hint for the common error names.
+        video.srcObject = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
         await video.play();
       }
 
@@ -591,8 +690,7 @@
         ]);
         out.width = video.videoWidth;
         out.height = video.videoHeight;
-        statusLabel.textContent = "Frame a window with both hands · pinch all five fingertips or press ←/→ to switch filters";
-        if (!faceLandmarker) statusLabel.textContent += " · face tracking failed to load, Roblox Avatar is off";
+        setStatus({ keys: faceLandmarker ? ["ready"] : ["ready", "faceFailed"] });
         run(landmarker, faceLandmarker, createFilterRenderer(out.width, out.height));
       }
 
@@ -603,8 +701,7 @@
 
       start().catch((error) => {
         console.error(error);
-        statusLabel.textContent = `Error: ${error.message ?? error}`;
-        statusLabel.classList.add("error");
+        setStatus({ error });
       });
 
     </script>

@@ -252,6 +252,7 @@
         document.title = text.pageTitle;
         description.content = text.description;
         nodes.forEach((n) => (n.textContent = text[n.dataset.i18n]));
+        document.querySelector(".card").href = `hand_portal_roblox.html?lang=${lang}`;
         document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lang === lang));
       }
 
@@ -267,7 +268,7 @@
       const initial = ["en", "ru"].includes(requested)
         ? requested
         : storage.get() ?? (navigator.language?.toLowerCase().startsWith("ru") ? "ru" : "en");
-      if (initial === "ru") setLang("ru");
+      setLang(initial);
     </script>
   </body>
 </html>
