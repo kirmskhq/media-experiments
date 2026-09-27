@@ -121,6 +121,32 @@
         background: var(--accent);
         color: #fff;
       }
+      .filters {
+        margin-top: 40px;
+      }
+      .filters h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+      .filters ol {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--card);
+      }
+      .filters li {
+        padding: 12px 20px;
+        color: var(--muted);
+      }
+      .filters li + li {
+        border-top: 1px solid var(--line);
+      }
+      .filters strong {
+        display: block;
+        color: var(--text);
+      }
       footer {
         margin-top: 40px;
         color: var(--muted);
@@ -151,6 +177,22 @@
         <span class="open" data-i18n="open">Open experiment</span>
       </a>
 
+      <section class="filters">
+        <h2 data-i18n="filtersTitle">Filters in the Roblox Hand Portal</h2>
+        <ol>
+          <li><strong>Roblox Avatar</strong> <span data-i18n="filter0">Swaps your face for the classic yellow Roblox head with the default smile, on the old blue torso, yellow arms and green legs body.</span></li>
+          <li><strong>Studs</strong> <span data-i18n="filter1">Turns the video into bricks with round bumps on top, like the studs on Roblox’s classic building parts.</span></li>
+          <li><strong>Noob</strong> <span data-i18n="filter2">Paints everything in the three colours of the noob, Roblox’s classic starter look: yellow head, blue torso and green legs.</span></li>
+          <li><strong>Toon</strong> <span data-i18n="filter3">Flat colours and bold outlines, similar to the cartoony look of many Roblox games.</span></li>
+          <li><strong>Voxel</strong> <span data-i18n="filter4">Turns the image into big shaded cubes, like the blocky building parts and terrain in Roblox.</span></li>
+          <li><strong>Neon Obby</strong> <span data-i18n="filter5">Glowing coloured outlines, like the Neon material often used in Roblox obbies (obstacle courses).</span></li>
+          <li><strong>Lava</strong> <span data-i18n="filter6">Turns everything into moving lava, like the red “don’t touch” kill bricks in obbies and the popular game The Floor Is Lava.</span></li>
+          <li><strong>Oof</strong> <span data-i18n="filter7">Flashes red and shakes, like getting hurt in Roblox, named after the famous “oof” sound your character made when it died.</span></li>
+          <li><strong>BrickColor</strong> <span data-i18n="filter8">Snaps every colour to Roblox’s classic built-in part colours (called BrickColors) in chunky low-resolution blocks.</span></li>
+          <li><strong>Baseplate</strong> <span data-i18n="filter9">Turns the scene grey with grid lines, like the empty grey starting floor in Roblox Studio.</span></li>
+        </ol>
+      </section>
+
       <footer data-i18n="footer">Needs a webcam and a recent desktop or mobile browser. Hand and face tracking by MediaPipe.</footer>
     </main>
     <script>
@@ -166,6 +208,17 @@
         tagHands: "Отслеживание рук",
         tagFace: "Отслеживание лица",
         open: "Открыть эксперимент",
+        filtersTitle: "Фильтры Roblox-портала",
+        filter0: "Заменяет ваше лицо классической жёлтой головой Roblox со стандартной улыбкой на старом теле: синий торс, жёлтые руки и зелёные ноги.",
+        filter1: "Превращает видео в кирпичики с круглыми выступами сверху, как «шипы» (studs) на классических строительных деталях Roblox.",
+        filter2: "Раскрашивает всё в три цвета «нуба» — классического стартового облика в Roblox: жёлтая голова, синий торс и зелёные ноги.",
+        filter3: "Плоские цвета и жирные контуры, похожие на мультяшный стиль многих игр Roblox.",
+        filter4: "Превращает картинку в крупные объёмные кубы, как блочные детали и ландшафт в Roblox.",
+        filter5: "Светящиеся цветные контуры, как материал Neon, который часто используют в «обби» (полосах препятствий) Roblox.",
+        filter6: "Превращает всё в движущуюся лаву, как красные смертельные блоки «не трогать» в обби и популярная игра The Floor Is Lava.",
+        filter7: "Мигает красным и трясётся, как при получении урона в Roblox; назван в честь знаменитого звука «oof», который издавал персонаж при смерти.",
+        filter8: "Приводит все цвета к классической встроенной палитре деталей Roblox (BrickColor) крупными блоками низкого разрешения.",
+        filter9: "Делает сцену серой с линиями сетки, как пустой серый стартовый пол (Baseplate) в Roblox Studio.",
         footer: "Нужны веб-камера и современный браузер на компьютере или телефоне. Отслеживание рук и лица — MediaPipe.",
       };
 
