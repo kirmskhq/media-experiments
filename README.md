@@ -1,6 +1,6 @@
 # Media Experiments
 
-Small browser experiments with webcams, hand tracking and live video filters.
+Small fun browser experiments for kids with webcams, hand tracking and live video filters.
 
 **Live site:** https://kirmskhq.github.io/media-experiments/
 
