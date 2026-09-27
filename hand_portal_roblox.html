@@ -58,7 +58,7 @@
     <canvas id="out"></canvas>
     <div id="hud"><span id="filter"></span><span id="status">Loading model and camera…</span></div>
     <script type="module">
-      import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs";
+      import { FaceLandmarker, FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs";
 
       // --- geometry ---
       const WRIST = 0;
@@ -106,7 +106,9 @@
       };
 
       // --- filters ---
-      const FILTERS = ["Studs", "Noob", "Toon", "Voxel", "Neon Obby", "Lava", "Oof", "BrickColor", "Baseplate"];
+      // "Roblox Avatar" draws on top of the plain video; every other filter is shader mode (index - 1).
+      const AVATAR = 0;
+      const FILTERS = ["Roblox Avatar", "Studs", "Noob", "Toon", "Voxel", "Neon Obby", "Lava", "Oof", "BrickColor", "Baseplate"];
 
       const VERTEX = `
       attribute vec2 a_pos;
@@ -172,7 +174,8 @@
         vec3 c = texture2D(u_tex, v_uv).rgb;
         float y = luma(c);
         vec3 o;
-        if (u_mode == 0) {
+        if (u_mode < 0) o = c;
+        else if (u_mode == 0) {
           // Studs: bricks with a raised stud in every cell.
           vec2 f;
           o = blockColor(22.0, f);
@@ -290,7 +293,7 @@
           canvas,
           render(video, mode) {
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
-            gl.uniform1i(uMode, mode);
+            gl.uniform1i(uMode, mode - 1);
             gl.uniform1f(uTime, performance.now() / 1000);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
           },
@@ -302,6 +305,8 @@
       const WASM_ROOT = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
       const MODEL_URL =
         "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+      const FACE_MODEL_URL =
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
       const SMOOTHING = 0.55;
 
       const video = document.getElementById("video");
@@ -316,13 +321,176 @@
         filterLabel.textContent = `${filterIndex + 1}/${FILTERS.length} · ${FILTERS[filterIndex]}`;
       };
 
+      const filesetPromise = FilesetResolver.forVisionTasks(WASM_ROOT);
+
       async function createLandmarker() {
-        const fileset = await FilesetResolver.forVisionTasks(WASM_ROOT);
-        return HandLandmarker.createFromOptions(fileset, {
+        return HandLandmarker.createFromOptions(await filesetPromise, {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
           runningMode: "VIDEO",
           numHands: 2,
         });
+      }
+
+      async function createFaceLandmarker() {
+        return FaceLandmarker.createFromOptions(await filesetPromise, {
+          baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate: "GPU" },
+          runningMode: "VIDEO",
+          numFaces: 2,
+          outputFaceBlendshapes: true,
+        });
+      }
+
+      // --- roblox avatar ---
+      const FACE_TOP = 10;
+      const FACE_CHIN = 152;
+      const FACE_LEFT = 234; // right cheek of the person, drawn on the right in the mirrored view
+      const FACE_RIGHT = 454;
+      const FACE_NOSE = 1;
+      const FACE_POINTS = [FACE_TOP, FACE_CHIN, FACE_LEFT, FACE_RIGHT, FACE_NOSE];
+
+      const BRICK_YELLOW = "#f5cd30";
+      const BRICK_BLUE = "#0d69ac";
+      const BRICK_GREEN = "#a4bd47";
+
+      const blendshape = (categories, name) => categories?.find((c) => c.categoryName === name)?.score ?? 0;
+
+      // Keeps only the landmarks the avatar needs, plus blink and jaw from the blendshapes.
+      const toFace = (landmarks, blendshapes, width, height) => {
+        const points = toMirroredPixels(FACE_POINTS.map((i) => landmarks[i]), width, height);
+        const categories = blendshapes?.categories;
+        return {
+          points,
+          // The mirrored view puts the person's left eye on the left of the screen.
+          blinkLeft: blendshape(categories, "eyeBlinkLeft"),
+          blinkRight: blendshape(categories, "eyeBlinkRight"),
+          jaw: blendshape(categories, "jawOpen"),
+        };
+      };
+
+      const lerp = (a, b, t) => a + (b - a) * t;
+
+      const smoothFaces = (prev, next, alpha) =>
+        prev.length !== next.length
+          ? next
+          : next.map((face, f) => ({
+              points: face.points.map((p, i) => ({
+                x: lerp(prev[f].points[i].x, p.x, alpha),
+                y: lerp(prev[f].points[i].y, p.y, alpha),
+              })),
+              blinkLeft: lerp(prev[f].blinkLeft, face.blinkLeft, alpha),
+              blinkRight: lerp(prev[f].blinkRight, face.blinkRight, alpha),
+              jaw: lerp(prev[f].jaw, face.jaw, alpha),
+            }));
+
+      function roundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+      }
+
+      // A brick-coloured block with a soft cylinder-style highlight.
+      function drawPart(x, y, w, h, color, r) {
+        roundRect(x, y, w, h, r);
+        ctx.fillStyle = color;
+        ctx.fill();
+        const shade = ctx.createLinearGradient(x, 0, x + w, 0);
+        shade.addColorStop(0, "rgba(0, 0, 0, 0.25)");
+        shade.addColorStop(0.4, "rgba(255, 255, 255, 0.12)");
+        shade.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+        ctx.fillStyle = shade;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, w * 0.012);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+        ctx.stroke();
+      }
+
+      // Classic R6 body: blue torso, yellow arms, green legs, sized from the head and kept upright.
+      function drawBody(cx, headBottom, headWidth) {
+        const torsoW = headWidth * 1.7;
+        const torsoH = headWidth * 1.7;
+        const armW = torsoW / 2;
+        const gap = headWidth * 0.04;
+        const top = headBottom + gap;
+        const r = headWidth * 0.04;
+        drawPart(cx - torsoW / 2 - gap - armW, top, armW, torsoH, BRICK_YELLOW, r);
+        drawPart(cx + torsoW / 2 + gap, top, armW, torsoH, BRICK_YELLOW, r);
+        drawPart(cx - torsoW / 2, top + torsoH + gap, torsoW / 2 - gap / 2, torsoH, BRICK_GREEN, r);
+        drawPart(cx + gap / 2, top + torsoH + gap, torsoW / 2 - gap / 2, torsoH, BRICK_GREEN, r);
+        drawPart(cx - torsoW / 2, top, torsoW, torsoH, BRICK_BLUE, r);
+      }
+
+      // The classic yellow head with the default "Smile" face; it follows head tilt, turn, blinks and mouth.
+      function drawAvatar(face) {
+        const [top, chin, left, right, nose] = face.points;
+        const faceW = dist(left, right);
+        const faceH = dist(top, chin);
+        const roll = Math.atan2(left.y - right.y, left.x - right.x);
+        const axis = { x: Math.cos(roll), y: Math.sin(roll) };
+        const mid = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+        const yaw = Math.max(-1, Math.min(1, ((nose.x - mid.x) * axis.x + (nose.y - mid.y) * axis.y) / (faceW / 2)));
+
+        // Big enough to hide hair and ears; the centre sits a bit above the face midpoint.
+        const w = Math.max(faceW * 1.6, faceH * 1.25);
+        const h = w * 0.92;
+        const up = { x: Math.sin(roll), y: -Math.cos(roll) };
+        const cx = (top.x + chin.x) / 2 + up.x * faceH * 0.16;
+        const cy = (top.y + chin.y) / 2 + up.y * faceH * 0.16;
+
+        drawBody(cx, cy + h / 2, w);
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(roll);
+
+        // Head: rounded cylinder whose highlight slides as the head turns.
+        roundRect(-w / 2, -h / 2, w, h, w * 0.28);
+        ctx.fillStyle = BRICK_YELLOW;
+        ctx.fill();
+        const light = 0.5 + yaw * 0.3;
+        const shade = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+        shade.addColorStop(0, "rgba(120, 80, 0, 0.35)");
+        shade.addColorStop(Math.max(0.05, light - 0.15), "rgba(255, 255, 220, 0.25)");
+        shade.addColorStop(Math.min(0.95, light + 0.15), "rgba(255, 255, 220, 0.1)");
+        shade.addColorStop(1, "rgba(120, 80, 0, 0.35)");
+        ctx.fillStyle = shade;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1.5, w * 0.012);
+        ctx.strokeStyle = "rgba(90, 60, 0, 0.45)";
+        ctx.stroke();
+
+        // Face decal, shifted and squeezed toward the side the head is turned to.
+        ctx.translate(yaw * w * 0.2, 0);
+        ctx.scale(1 - Math.abs(yaw) * 0.25, 1);
+        ctx.fillStyle = "#111";
+        const eyeX = w * 0.15;
+        const eyeY = -h * 0.08;
+        const eyeRx = w * 0.045;
+        const eyeRy = h * 0.1;
+        for (const [x, blink] of [[-eyeX, face.blinkLeft], [eyeX, face.blinkRight]]) {
+          ctx.beginPath();
+          ctx.ellipse(x, eyeY, eyeRx, Math.max(eyeRy * 0.12, eyeRy * (1 - blink)), 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const mouthY = h * 0.1;
+        const mouthW = w * 0.24;
+        const open = Math.max(0, Math.min(1, (face.jaw - 0.15) / 0.5));
+        ctx.lineCap = "round";
+        ctx.lineWidth = w * 0.035;
+        ctx.strokeStyle = "#111";
+        ctx.beginPath();
+        if (open > 0) {
+          // Open "D" grin that grows with the real mouth.
+          ctx.moveTo(-mouthW, mouthY);
+          ctx.quadraticCurveTo(0, mouthY + h * (0.12 + 0.3 * open), mouthW, mouthY);
+          ctx.quadraticCurveTo(0, mouthY + h * 0.04, -mouthW, mouthY);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.moveTo(-mouthW, mouthY);
+          ctx.quadraticCurveTo(0, mouthY + h * 0.2, mouthW, mouthY);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
 
       // Browsers report camera failures with terse DOMException texts (Firefox: "The object can not be found here.").
@@ -347,15 +515,21 @@
         await video.play();
       }
 
-      function drawPortal(quad, filter) {
-        filter.render(video, filterIndex);
-        ctx.save();
+      const tracePortal = (quad) => {
         ctx.beginPath();
         quad.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         ctx.closePath();
+      };
+
+      function drawPortal(quad, filter, faces) {
+        filter.render(video, filterIndex);
+        ctx.save();
+        tracePortal(quad);
         ctx.clip();
         ctx.drawImage(filter.canvas, 0, 0);
+        if (filterIndex === AVATAR) faces.forEach(drawAvatar);
         ctx.restore();
+        tracePortal(quad);
         // Roblox Studio selection box.
         ctx.lineJoin = "round";
         ctx.lineWidth = Math.max(3, out.width / 320);
@@ -366,9 +540,10 @@
         quad.forEach((p) => ctx.fillRect(p.x - handle / 2, p.y - handle / 2, handle, handle));
       }
 
-      function run(landmarker, filter) {
+      function run(landmarker, faceLandmarker, filter) {
         const { width, height } = out;
         let hands = [];
+        let faces = [];
         let wasBunched = false;
         let lastVideoTime = -1;
 
@@ -381,13 +556,22 @@
             const bunched = hands.some(isBunched);
             if (bunched && !wasBunched) setFilter(filterIndex + 1);
             wasBunched = bunched;
+
+            // Face tracking only runs while the avatar filter is on.
+            if (filterIndex === AVATAR && faceLandmarker) {
+              const result = faceLandmarker.detectForVideo(video, performance.now());
+              const detected = result.faceLandmarks.map((l, i) => toFace(l, result.faceBlendshapes[i], width, height));
+              faces = smoothFaces(faces, detected, SMOOTHING);
+            } else {
+              faces = [];
+            }
           }
 
           ctx.save();
           ctx.setTransform(-1, 0, 0, 1, width, 0);
           ctx.drawImage(video, 0, 0, width, height);
           ctx.restore();
-          if (hands.length === 2 && !wasBunched) drawPortal(portalQuad(hands), filter);
+          if (hands.length === 2 && !wasBunched) drawPortal(portalQuad(hands), filter, faces);
 
           requestAnimationFrame(frame);
         };
@@ -396,11 +580,20 @@
 
       async function start() {
         setFilter(0);
-        const [landmarker] = await Promise.all([createLandmarker(), openCamera()]);
+        // The avatar filter is optional: the other filters still work if the face model fails to load.
+        const [landmarker, faceLandmarker] = await Promise.all([
+          createLandmarker(),
+          createFaceLandmarker().catch((error) => {
+            console.error(error);
+            return null;
+          }),
+          openCamera(),
+        ]);
         out.width = video.videoWidth;
         out.height = video.videoHeight;
         statusLabel.textContent = "Frame a window with both hands · pinch all five fingertips or press ←/→ to switch filters";
-        run(landmarker, createFilterRenderer(out.width, out.height));
+        if (!faceLandmarker) statusLabel.textContent += " · face tracking failed to load, Roblox Avatar is off";
+        run(landmarker, faceLandmarker, createFilterRenderer(out.width, out.height));
       }
 
       addEventListener("keydown", (e) => {
