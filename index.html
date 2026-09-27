@@ -94,6 +94,33 @@
         color: #fff;
         font-weight: 700;
       }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+      .lang {
+        display: flex;
+        flex-shrink: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .lang button {
+        padding: 6px 12px;
+        border: 0;
+        background: var(--card);
+        color: var(--muted);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .lang button[aria-pressed="true"] {
+        background: var(--accent);
+        color: #fff;
+      }
       footer {
         margin-top: 40px;
         color: var(--muted);
@@ -103,20 +130,91 @@
   </head>
   <body>
     <main>
-      <h1>Media Experiments</h1>
-      <p class="lead">Small browser experiments with webcams, hand tracking and live video filters. Everything runs on your device; no video leaves your browser.</p>
+      <header>
+        <h1 data-i18n="title">Media Experiments</h1>
+        <div class="lang" role="group" aria-label="Language">
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+        </div>
+      </header>
+      <p class="lead" data-i18n="lead">Small browser experiments with webcams, hand tracking and live video filters. Everything runs on your device; no video leaves your browser.</p>
 
       <a class="card" href="hand_portal_roblox.html">
-        <h2>Roblox Hand Portal</h2>
-        <p>
+        <h2 data-i18n="portalTitle">Roblox Hand Portal</h2>
+        <p data-i18n="portalText">
           Frame a window with both hands in front of the webcam and see the video inside it through a Roblox-style filter,
           including one that turns you into a classic Roblox character. Pinch all five fingertips together to switch filters.
         </p>
-        <div class="tags"><span>Webcam</span><span>Hand tracking</span><span>Face tracking</span><span>WebGL</span></div>
-        <span class="open">Open experiment</span>
+        <div class="tags">
+          <span data-i18n="tagWebcam">Webcam</span><span data-i18n="tagHands">Hand tracking</span><span data-i18n="tagFace">Face tracking</span><span>WebGL</span>
+        </div>
+        <span class="open" data-i18n="open">Open experiment</span>
       </a>
 
-      <footer>Needs a webcam and a recent desktop or mobile browser. Hand and face tracking by MediaPipe.</footer>
+      <footer data-i18n="footer">Needs a webcam and a recent desktop or mobile browser. Hand and face tracking by MediaPipe.</footer>
     </main>
+    <script>
+      const RU = {
+        pageTitle: "Медиа-эксперименты",
+        description: "Небольшие эксперименты в браузере с веб-камерой, отслеживанием рук и живыми видеофильтрами.",
+        title: "Медиа-эксперименты",
+        lead: "Небольшие эксперименты в браузере с веб-камерой, отслеживанием рук и живыми видеофильтрами. Всё работает на вашем устройстве: видео не покидает браузер.",
+        portalTitle: "Roblox-портал из ладоней",
+        portalText:
+          "Сложите руками рамку перед веб-камерой и смотрите на видео внутри неё через фильтр в стиле Roblox — в том числе такой, который превращает вас в классического персонажа Roblox. Чтобы сменить фильтр, сведите вместе кончики всех пяти пальцев.",
+        tagWebcam: "Веб-камера",
+        tagHands: "Отслеживание рук",
+        tagFace: "Отслеживание лица",
+        open: "Открыть эксперимент",
+        footer: "Нужны веб-камера и современный браузер на компьютере или телефоне. Отслеживание рук и лица — MediaPipe.",
+      };
+
+      // English lives in the HTML; remember it so switching back needs no second dictionary.
+      const nodes = [...document.querySelectorAll("[data-i18n]")];
+      const description = document.querySelector('meta[name="description"]');
+      const EN = {
+        pageTitle: document.title,
+        description: description.content,
+        ...Object.fromEntries(nodes.map((n) => [n.dataset.i18n, n.textContent.trim().replace(/\s+/g, " ")])),
+      };
+
+      const storage = {
+        get: () => {
+          try {
+            return localStorage.getItem("lang");
+          } catch {
+            return null;
+          }
+        },
+        set: (value) => {
+          try {
+            localStorage.setItem("lang", value);
+          } catch {}
+        },
+      };
+
+      function setLang(lang) {
+        const text = lang === "ru" ? RU : EN;
+        document.documentElement.lang = lang;
+        document.title = text.pageTitle;
+        description.content = text.description;
+        nodes.forEach((n) => (n.textContent = text[n.dataset.i18n]));
+        document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lang === lang));
+      }
+
+      document.querySelectorAll("[data-lang]").forEach((b) =>
+        b.addEventListener("click", () => {
+          storage.set(b.dataset.lang);
+          setLang(b.dataset.lang);
+        }),
+      );
+
+      // ?lang=ru in the link wins, then the visitor's saved choice, then the browser language.
+      const requested = new URLSearchParams(location.search).get("lang");
+      const initial = ["en", "ru"].includes(requested)
+        ? requested
+        : storage.get() ?? (navigator.language?.toLowerCase().startsWith("ru") ? "ru" : "en");
+      if (initial === "ru") setLang("ru");
+    </script>
   </body>
 </html>
